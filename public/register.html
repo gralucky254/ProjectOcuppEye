@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Register - ocuppEYE</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+    <div id="register-container">
+        <h2>Register</h2>
+        <form id="register-form">
+            <label for="full-name">Full Name:</label>
+            <input type="text" id="full-name" name="fullName" required><br><br>
+
+            <label for="phone-number">Phone Number:</label>
+            <input type="text" id="phone-number" name="phoneNumber" required><br><br>
+            <label for="email">Email:</label>
+            <input type="text" id="email" name="email" required><br><br>
+
+            <label for="new-username">Username:</label>
+            <input type="text" id="new-username" name="username" required><br><br>
+
+            <label for="new-password">Password:</label>
+            <input type="password" id="new-password" name="password" required><br><br>
+
+            <label for="confirm-password">Confirm Password:</label>
+            <input type="password" id="confirm-password" name="confirmPassword" required><br><br>
+
+            <button type="submit">Register</button>
+        </form>
+
+        <div id="register-error-message" style="color: red; display: none;"></div>
+        <div id="register-success-message" style="color: green; display: none;">
+            Registration successful! <a href="login.html">Login here</a>
+        </div>
+        <button id="google-signup-button">Sign up with Google</button>
+
+        <p>Already have an account? <a href="login.html">Login here</a></p>
+    </div>
+
+    <script src="register.js"></script>
+</body>
+</html>
