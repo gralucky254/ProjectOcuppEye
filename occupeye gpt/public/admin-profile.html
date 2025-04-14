@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Profile</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="profile-container">
+        <h2>Admin Account Details</h2>
+        <img id="admin-profile-picture" src="default-profile.png" alt="Profile Picture">
+        <p><strong>Username:</strong> <span id="admin-username"></span></p>
+        <p><strong>Email:</strong> <span id="admin-email"></span></p>
+        <p><strong>Phone Number:</strong> <span id="admin-phone"></span></p>
+        <button onclick="window.location.href='index.html'">Back to Dashboard</button>
+    </div>
+
+    <script>
+        document.addEventListener("DOMContentLoaded", async function () {
+            try {
+                const userId = localStorage.getItem("userId");
+                if (!userId) throw new Error("Admin ID not found.");
+
+                const response = await fetch(`${API_BASE_URL}/profile/${userId}`, { method: "GET", credentials: "include" });
+                if (!response.ok) throw new Error("Failed to fetch admin details.");
+
+                const admin = await response.json();
+                document.getElementById("admin-username").textContent = admin.username;
+                document.getElementById("admin-email").textContent = admin.email;
+                document.getElementById("admin-phone").textContent = admin.phoneNumber;
+                if (admin.profilePicture) {
+                    document.getElementById("admin-profile-picture").src = admin.profilePicture;
+                }
+            } catch (error) {
+                console.error("Error fetching admin details:", error);
+                alert("Failed to load profile details.");
+            }
+        });
+    </script>
+</body>
+</html>
