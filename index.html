@@ -6,10 +6,17 @@
     <meta name="description" content="ocuppEYE Dashboard - Real-time bus monitoring.">
     <title>ocuppEYE Monitoring</title>
     <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="map.css">
+    <!-- Add Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.3/dist/leaflet.css" />
+    <!-- Add Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <meta http-equiv="Content-Security-Policy" 
-      content="default-src 'self' http://127.0.0.1:5000 http://localhost:5000; 
-               script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdnjs.cloudflare.com;">
-
+    content="default-src 'self' http://127.0.0.1:5000 http://localhost:5000;
+             script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdnjs.cloudflare.com https://unpkg.com;
+             style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com;
+             font-src 'self' https://cdnjs.cloudflare.com;
+             img-src 'self' data: https://*.tile.openstreetmap.org;">
     <link rel="icon" type="image/x-icon" href="favicon.ico">
 </head>
 <body>
@@ -34,43 +41,50 @@
         <main class="main-dashboard">
             <section class="monitoring-section">
                 <h3>Live Monitoring</h3>
-                    <div class="bus-grid">
-                        <div class="bus-card">
-                            <div class="bus-video">
-                                <video id="bus-25-stream" autoplay muted playsinline></video>
+                <div class="bus-grid">
+                    <div class="bus-card">
+                        <div class="bus-video">
+                            <video id="bus-25-stream" autoplay muted playsinline></video>
+                        </div>
+                        <div class="bus-info">
+                            <div class="bus-header">
+                                <div class="bus-title">
+                                    <span>Bus #25</span>
+                                    <span class="status normal">Normal</span>
+                                </div>
+                                <button class="details-toggle">
+                                    <i class="fas fa-chevron-down"></i>
+                                </button>
                             </div>
-                            <div class="bus-info">
-                                <div class="bus-header">
-                                    <div class="bus-title">
-                                        <span>Bus #25</span>
-                                        <span class="status normal">Normal</span>
-                                    </div>
-                                    <button class="details-toggle">
-                                        <i class="fas fa-chevron-down"></i>
-                                    </button>
-                                </div>
-                                <div class="additional-details">
-                                    <p><strong>Driver:</strong> John Doe</p>
-                                    <p><strong>License Plate:</strong> ABC-1234</p>
-                                    <p><strong>Capacity:</strong> 50 passengers</p>
-                                    <p><strong>Departure:</strong> 08:00 AM</p>
-                                    <p><strong>Expected Arrival:</strong> 09:30 AM</p>
-                                </div>
+                            <div class="additional-details">
+                                <p><strong>Driver:</strong> Jef</p>
+                                <p><strong>License Plate:</strong> KDK 474T</p>
+                                <p><strong>Capacity:</strong> 14 passengers</p>
+                                <p><strong>Departure:</strong> 08:00 AM</p>
+                                <p><strong>Expected Arrival:</strong> 09:30 AM</p>
                             </div>
                         </div>
                     </div>
                 </div>
-
                 <section class="map-section">
-                    <h4>Bus Tracking Map</h4>
-                    <div id="map">
-                        <div class="loading-spinner">Loading map...</div>
+                    <h4><i class="fas fa-map-marked-alt"></i> Bus Tracking Map</h4>
+                    <div id="map-container">
+                        <div id="map"></div>
+                        <div class="map-controls">
+                            <button id="refresh-map"><i class="fas fa-sync-alt"></i> Refresh</button>
+                            <button id="zoom-in"><i class="fas fa-search-plus"></i></button>
+                            <button id="zoom-out"><i class="fas fa-search-minus"></i></button>
+                        </div>
                     </div>
                 </section>
             </section>
         </main>
     </div>
-    <script src="script.js"></script>
+
+    <!-- Add Leaflet JS before your map.js -->
+    <script src="https://unpkg.com/leaflet@1.9.3/dist/leaflet.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.7.1/chart.min.js"></script>
+    <script src="script.js"></script>
+    <script src="map.js"></script>
 </body>
 </html>

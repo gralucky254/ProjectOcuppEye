@@ -1,45 +1,82 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Register - ocuppEYE</title>
-    <link rel="stylesheet" href="style.css">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Register | OccupEye</title>
+  <link rel="stylesheet" href="auth.css">
+  <link rel="stylesheet" href="log.css">
+  <script src="auth.js" defer></script>
 </head>
 <body>
-
-    <div id="register-container">
-        <h2>Register</h2>
-        <form id="register-form">
-            <label for="full-name">Full Name:</label>
-            <input type="text" id="full-name" name="fullName" required><br><br>
-
-            <label for="phone-number">Phone Number:</label>
-            <input type="text" id="phone-number" name="phoneNumber" required><br><br>
-            <label for="email">Email:</label>
-            <input type="text" id="email" name="email" required><br><br>
-
-            <label for="new-username">Username:</label>
-            <input type="text" id="new-username" name="username" required><br><br>
-
-            <label for="new-password">Password:</label>
-            <input type="password" id="new-password" name="password" required><br><br>
-
-            <label for="confirm-password">Confirm Password:</label>
-            <input type="password" id="confirm-password" name="confirmPassword" required><br><br>
-
-            <button type="submit">Register</button>
-        </form>
-
-        <div id="register-error-message" style="color: red; display: none;"></div>
-        <div id="register-success-message" style="color: green; display: none;">
-            Registration successful! <a href="login.html">Login here</a>
+  <div class="auth-container">
+    <div class="auth-card">
+      <h1>Create Account</h1>
+      <p class="subtitle">Join us to get started</p>
+      
+      <form id="registerForm" class="auth-form">
+        <div class="form-group">
+          <label for="username">Username</label>
+          <input type="text" id="username" name="username" required minlength="3">
+          <small class="hint">At least 3 characters</small>
         </div>
-        <button id="google-signup-button">Sign up with Google</button>
-
-        <p>Already have an account? <a href="login.html">Login here</a></p>
+        
+        <div class="form-group">
+          <label for="email">Email</label>
+          <input type="email" id="email" name="email" required>
+        </div>
+        
+        <div class="form-group">
+          <label for="password">Password</label>
+          <input type="password" id="password" name="password" required minlength="6">
+          <small class="hint">At least 6 characters</small>
+        </div>
+        
+        <div class="form-group">
+          <label for="fullName">Full Name</label>
+          <input type="text" id="fullName" name="fullName" required>
+        </div>
+        
+        <div class="form-group">
+          <label for="phoneNumber">Phone Number (Optional)</label>
+          <input type="tel" id="phoneNumber" name="phoneNumber">
+        </div>
+        
+        <button type="submit" class="btn btn-primary">Create Account</button>
+        
+        <div class="social-login">
+          <p>Or sign up with</p>
+          <a href="/auth/google" class="btn btn-google">
+            <img src="https://cdn.jsdelivr.net/gh/devicons/devicon/icons/google/google-original.svg" alt="Google">
+            Google
+          </a>
+        </div>
+        
+        <div class="auth-footer">
+          Already have an account? <a href="login.html">Sign in</a>
+        </div>
+      </form>
+      
+      <div id="alertContainer" class="alert-container"></div>
     </div>
+  </div>
+  
+  <script src="js/utils.js"></script>
+ 
 
-    <script src="register.js"></script>
+  <script>
+    // Parse URL parameters and pre-fill form
+    document.addEventListener('DOMContentLoaded', function() {
+      const urlParams = new URLSearchParams(window.location.search);
+      
+      if (urlParams.size > 0) {
+        document.getElementById('username').value = urlParams.get('username') || '';
+        document.getElementById('email').value = urlParams.get('email') || '';
+        document.getElementById('password').value = urlParams.get('password') || '';
+        document.getElementById('fullName').value = (urlParams.get('fullName') || '').replace(/\+/g, ' ');
+        document.getElementById('phoneNumber').value = urlParams.get('phoneNumber') || '';
+      }
+    });
+  </script>
 </body>
 </html>

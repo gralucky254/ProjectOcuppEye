@@ -5,7 +5,6 @@ from dotenv import load_dotenv
 import os
 import cv2
 import numpy as np
-import base64  # Added missing import
 from email.mime.text import MIMEText
 from google.oauth2.credentials import Credentials
 from google.auth.transport.requests import Request
@@ -16,7 +15,8 @@ import serial.tools.list_ports
 import time
 import atexit
 import threading
-import datetime  # Added missing import
+import datetime
+import base64
 from typing import Optional, Tuple
 
 # ========== Configuration ==========
@@ -31,6 +31,9 @@ class Config:
     MAX_FILE_SIZE = 5 * 1024 * 1024  # 5MB
     FACE_DETECTION_SCALE = float(os.getenv("FACE_DETECTION_SCALE", "1.1"))
     MIN_NEIGHBORS = int(os.getenv("MIN_NEIGHBORS", "4"))
+    SHUTDOWN_THRESHOLD = int(os.getenv("SHUTDOWN_THRESHOLD", "10"))
+    ARDUINO_TIMEOUT = float(os.getenv("ARDUINO_TIMEOUT", "5.0"))
+    GMAIL_PORT = int(os.getenv("GMAIL_PORT", "8080"))  # Added port configuration
 
 # ========== Flask App Setup ==========
 app = Flask(__name__)
@@ -48,7 +51,10 @@ CORS(app, resources={
 })
 
 # Configure logging
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
 logger = logging.getLogger(__name__)
 
 # ========== Serial Manager ==========
@@ -58,8 +64,6 @@ class SerialManager:
         self.baud_rate = baud_rate
         self.connection: Optional[serial.Serial] = None
         self.lock = threading.Lock()
-        self.connection_attempts = 0
-        self.max_attempts = 3
         self.ready = False
 
     def connect(self) -> bool:
@@ -96,7 +100,6 @@ class SerialManager:
                         response = self.connection.readline().decode().strip()
                         if response == "ARDUINO_READY":
                             self.ready = True
-                            self.connection_attempts = 0
                             logger.info("Arduino connection established")
                             return True
                         logger.debug(f"Received: {response}")
@@ -104,15 +107,18 @@ class SerialManager:
                 raise RuntimeError("Handshake timeout")
 
             except Exception as e:
-                self.connection_attempts += 1
                 self.ready = False
                 if self.connection:
                     self.connection.close()
                 self.connection = None
-                logger.error(f"Connection attempt {self.connection_attempts} failed: {str(e)}")
+                logger.error(f"Connection failed: {str(e)}")
                 return False
 
-    def send_command(self, command: str, expect_response: bool = False, timeout: float = 2.0) -> Tuple[bool, Optional[str]]:
+    def send_command(self, command: str, expect_response: bool = False, 
+                    timeout: float = None) -> Tuple[bool, Optional[str]]:
+        if timeout is None:
+            timeout = Config.ARDUINO_TIMEOUT
+            
         if not self.connect():
             return False, None
 
@@ -143,43 +149,59 @@ class SerialManager:
 serial_manager = SerialManager(port=Config.ARDUINO_PORT, baud_rate=Config.BAUD_RATE)
 
 # ========== Email Service ==========
-def get_gmail_service():
-    SCOPES = ['https://www.googleapis.com/auth/gmail.send']
-    TOKEN_FILE = "token.json"
+class EmailService:
+    _service = None
+    _initialized = False
     
-    creds = None
-    try:
-        if os.path.exists(TOKEN_FILE):
-            creds = Credentials.from_authorized_user_file(TOKEN_FILE, SCOPES)
-
-        if not creds or not creds.valid:
-            if creds and creds.expired and creds.refresh_token:
-                creds.refresh(Request())
-            else:
-                flow = InstalledAppFlow.from_client_secrets_file(
-                    "credentials.json",
-                    scopes=SCOPES,
-                    redirect_uri="http://localhost:8080"
-                )
-                creds = flow.run_local_server(port=8080, open_browser=False)
+    @classmethod
+    def get_service(cls):
+        if not cls._initialized:
+            cls._initialize_service()
+        return cls._service
+    
+    @classmethod
+    def _initialize_service(cls):
+        try:
+            SCOPES = ['https://www.googleapis.com/auth/gmail.send']
+            TOKEN_FILE = "token.json"
+            CREDENTIALS_FILE = "credentials.json"
             
-            with open(TOKEN_FILE, 'w') as token:
-                token.write(creds.to_json())
+            creds = None
+            if os.path.exists(TOKEN_FILE):
+                creds = Credentials.from_authorized_user_file(TOKEN_FILE, SCOPES)
 
-        return build('gmail', 'v1', credentials=creds)
-    except Exception as e:
-        logger.error(f"Gmail service init failed: {str(e)}")
-        return None
+            if not creds or not creds.valid:
+                if creds and creds.expired and creds.refresh_token:
+                    creds.refresh(Request())
+                elif os.path.exists(CREDENTIALS_FILE):
+                    flow = InstalledAppFlow.from_client_secrets_file(
+                        CREDENTIALS_FILE,
+                        scopes=SCOPES,
+                        redirect_uri=f"http://localhost:{Config.GMAIL_PORT}"
+                    )
+                    creds = flow.run_local_server(port=Config.GMAIL_PORT)
+                    
+                    with open(TOKEN_FILE, 'w') as token:
+                        token.write(creds.to_json())
+                else:
+                    logger.error("Missing credentials file")
+                    return
+
+            cls._service = build('gmail', 'v1', credentials=creds)
+            cls._initialized = True
+            logger.info("Email service initialized successfully")
+        except Exception as e:
+            logger.error(f"Email service init failed: {str(e)}")
 
 def send_alert_email(bus_id: str, face_count: int) -> bool:
     try:
-        service = get_gmail_service()
+        service = EmailService.get_service()
         if not service:
             return False
 
         subject = f"🚨 Overcrowding Alert - Bus {bus_id}"
         body = f"""Overcrowding detected on Bus {bus_id}:
-- Detected faces: {face_count}
+- Detected faces: {face_count} (Threshold: {Config.SHUTDOWN_THRESHOLD})
 - Time: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
 - Action: Automatic shutdown initiated"""
 
@@ -193,10 +215,40 @@ def send_alert_email(bus_id: str, face_count: int) -> bool:
             userId='me',
             body={'raw': raw}
         ).execute()
+        logger.info(f"Alert email sent for bus {bus_id}")
         return True
     except Exception as e:
         logger.error(f"Email failed: {e}")
         return False
+
+# ========== Face Detection ==========
+class FaceDetector:
+    def __init__(self):
+        self.face_cascade = cv2.CascadeClassifier(
+            cv2.data.haarcascades + 'haarcascade_frontalface_default.xml'
+        )
+
+    def detect(self, image_data: bytes) -> Tuple[int, list]:
+        try:
+            img_array = np.frombuffer(image_data, np.uint8)
+            img = cv2.imdecode(img_array, cv2.IMREAD_COLOR)
+            if img is None:
+                raise ValueError("Failed to decode image")
+
+            gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+            faces = self.face_cascade.detectMultiScale(
+                gray, 
+                scaleFactor=Config.FACE_DETECTION_SCALE,
+                minNeighbors=Config.MIN_NEIGHBORS
+            )
+            
+            return len(faces), [{"x": int(x), "y": int(y), "w": int(w), "h": int(h)} 
+                              for (x, y, w, h) in faces]
+        except Exception as e:
+            logger.error(f"Face detection error: {str(e)}")
+            raise
+
+face_detector = FaceDetector()
 
 # ========== Routes ==========
 @app.route('/api/health', methods=['GET'])
@@ -208,8 +260,9 @@ def health_check():
             "arduino_connected": connected,
             "services": {
                 "face_detection": True,
-                "email": get_gmail_service() is not None
-            }
+                "email": EmailService._initialized
+            },
+            "threshold": Config.SHUTDOWN_THRESHOLD
         })
     except Exception as e:
         logger.error(f"Health check failed: {e}")
@@ -237,7 +290,8 @@ def handle_overcrowding_alert():
         return jsonify({
             "status": "alert_processed",
             "email_sent": email_sent,
-            "arduino_response": response if success else "failed"
+            "arduino_response": response if success else "failed",
+            "threshold": Config.SHUTDOWN_THRESHOLD
         })
     except Exception as e:
         logger.error(f"Alert error: {e}")
@@ -246,51 +300,27 @@ def handle_overcrowding_alert():
 @app.route('/detect_faces', methods=['POST'])
 def detect_faces():
     try:
-        # Validate request
         if 'video_frame' not in request.files:
             return jsonify({"error": "No video frame provided"}), 400
 
         file = request.files['video_frame']
-        
-        # Validate file size
         if file.content_length > Config.MAX_FILE_SIZE:
             return jsonify({
                 "error": f"File too large (max {Config.MAX_FILE_SIZE/1024/1024}MB)"
             }), 413
 
-        # Process image
-        try:
-            img_array = np.frombuffer(file.read(), np.uint8)
-            img = cv2.imdecode(img_array, cv2.IMREAD_COLOR)
-            if img is None:
-                raise ValueError("Failed to decode image")
-        except Exception as e:
-            logger.error(f"Image processing error: {str(e)}")
-            return jsonify({"error": "Invalid image data"}), 400
-
-        # Detect faces with error handling
-        try:
-            gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-            face_cascade = cv2.CascadeClassifier(
-                cv2.data.haarcascades + 'haarcascade_frontalface_default.xml'
-            )
-            faces = face_cascade.detectMultiScale(
-                gray, 
-                scaleFactor=Config.FACE_DETECTION_SCALE,
-                minNeighbors=Config.MIN_NEIGHBORS
-            )
-        except Exception as e:
-            logger.error(f"Face detection error: {str(e)}")
-            return jsonify({"error": "Face detection failed"}), 500
-
+        face_count, faces = face_detector.detect(file.read())
+        overcrowded = face_count >= Config.SHUTDOWN_THRESHOLD
+        
         return jsonify({
-            "face_count": len(faces),
-            "faces": [{"x": int(x), "y": int(y), "w": int(w), "h": int(h)} 
-                     for (x, y, w, h) in faces]
+            "face_count": face_count,
+            "faces": faces,
+            "overcrowded": overcrowded,
+            "threshold": Config.SHUTDOWN_THRESHOLD
         })
 
     except Exception as e:
-        logger.error(f"Unexpected error in detect_faces: {str(e)}", exc_info=True)
+        logger.error(f"Face detection error: {str(e)}", exc_info=True)
         return jsonify({"error": "Internal server error"}), 500
 
 # ========== Startup & Cleanup ==========
@@ -305,8 +335,7 @@ def initialize_services():
     # Initialize email service in background thread
     def init_email_service():
         try:
-            if get_gmail_service():
-                logger.info("Email service initialized successfully")
+            EmailService._initialize_service()
         except Exception as e:
             logger.error(f"Email service init failed: {e}")
 

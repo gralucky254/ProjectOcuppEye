@@ -7,15 +7,6 @@ document.addEventListener("DOMContentLoaded", async function () {
 
     // DOM Elements
     const elements = {
-        // Authentication
-        loginForm: document.getElementById("login-form"),
-        registerForm: document.getElementById("register-form"),
-        googleSignInButton: document.getElementById("google-signin-button"),
-        googleSignUpButton: document.getElementById("google-signup-button"),
-        logoutBtn: document.getElementById("logout"),
-        profileBtn: document.getElementById("profile-btn"),
-        uploadForm: document.getElementById("upload-profile-picture-form"),
-        
         // UI Components
         alertsSection: document.querySelector(".alerts-section"),
         sidebar: document.getElementById("sidebar"),
@@ -36,7 +27,7 @@ document.addEventListener("DOMContentLoaded", async function () {
     const state = {
         activeCamera: null,
         busData: [
-            { id: 1, name: "Bus 1", status: "normal", driver: "John Doe", plate: "ABC-1234", capacity: 50 },
+            { id: 1, name: "Bus 1", status: "normal", driver: "Jef", plate: "KDK 424T", capacity: 14 },
             { id: 2, name: "Bus 2", status: "offline", driver: "Jane Smith", plate: "DEF-5678", capacity: 45 },
             { id: 3, name: "Bus 3", status: "offline", driver: "Mike Johnson", plate: "GHI-9012", capacity: 40 },
             { id: 4, name: "Bus 4", status: "offline", driver: "Sarah Williams", plate: "JKL-3456", capacity: 35 }
@@ -56,14 +47,6 @@ document.addEventListener("DOMContentLoaded", async function () {
 
     // Setup all event listeners
     function setupEventListeners() {
-        // Authentication
-        if (elements.loginForm) elements.loginForm.addEventListener("submit", handleLogin);
-        if (elements.registerForm) elements.registerForm.addEventListener("submit", handleRegister);
-        if (elements.googleSignInButton) elements.googleSignInButton.addEventListener("click", handleGoogleSignIn);
-        if (elements.googleSignUpButton) elements.googleSignUpButton.addEventListener("click", handleGoogleSignIn);
-        if (elements.logoutBtn) elements.logoutBtn.addEventListener("click", handleLogout);
-        if (elements.profileBtn) elements.profileBtn.addEventListener("click", () => navigateTo("profile.html"));
-        
         // Sidebar Navigation
         if (elements.menuBtn) elements.menuBtn.addEventListener("click", toggleSidebar);
         if (elements.liveMonitoringBtn) elements.liveMonitoringBtn.addEventListener("click", () => navigateTo("index.html"));
@@ -104,80 +87,6 @@ document.addEventListener("DOMContentLoaded", async function () {
         } else if (path.includes("reports.html")) {
             // Initialize reports functionality
         }
-    }
-
-    // 1. Authentication Functions
-    async function handleLogin(event) {
-        event.preventDefault();
-        const username = document.getElementById("username").value.trim();
-        const password = document.getElementById("password").value.trim();
-
-        if (!username || !password) {
-            showAlert("Username and password are required.", "error");
-            return;
-        }
-
-        try {
-            const response = await fetch(`${API_BASE_URL}/login`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ username, password }),
-                credentials: "include"
-            });
-
-            const data = await response.json();
-            if (response.ok) {
-                localStorage.setItem("userId", data.userId);
-                localStorage.setItem("token", data.token);
-                showAlert("Login successful!", "success");
-                setTimeout(() => navigateTo("index.html"), 1000);
-            } else {
-                showAlert(data.message || "Invalid credentials.", "error");
-            }
-        } catch (error) {
-            console.error("Login Error:", error);
-            showAlert("Server error, please try again.", "error");
-        }
-    }
-
-    async function handleRegister(event) {
-        event.preventDefault();
-        const formData = {
-            fullName: document.getElementById("full-name").value.trim(),
-            phoneNumber: document.getElementById("phone-number").value.trim(),
-            email: document.getElementById("email").value.trim(),
-            username: document.getElementById("new-username").value.trim(),
-            password: document.getElementById("new-password").value.trim(),
-            confirmPassword: document.getElementById("confirm-password").value.trim()
-        };
-
-        if (formData.password !== formData.confirmPassword) {
-            showAlert("Passwords do not match.", "error");
-            return;
-        }
-
-        try {
-            const response = await fetch(`${API_BASE_URL}/register`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(formData)
-            });
-
-            const data = await response.json();
-            if (response.ok) {
-                showAlert("Registration successful! Redirecting to login...", "success");
-                setTimeout(() => navigateTo("login.html"), 2000);
-            } else {
-                showAlert(data.message || "Registration failed.", "error");
-            }
-        } catch (error) {
-            console.error("Registration Error:", error);
-            showAlert("Server error, please try again.", "error");
-        }
-    }
-
-    function handleGoogleSignIn() {
-        window.location.href = `${API_BASE_URL}/auth/google`;
     }
 
     async function handleLogout() {
@@ -235,47 +144,6 @@ document.addEventListener("DOMContentLoaded", async function () {
             window.location.href = "/login";
         }
     }
-    async function handleProfilePictureUpload(event) {
-        event.preventDefault();
-        const fileInput = document.getElementById("profile-picture-upload");
-        const file = fileInput.files[0];
-        
-        if (!file) {
-            showAlert("Please select a file to upload", "error");
-            return;
-        }
-
-        const formData = new FormData();
-        formData.append("profilePicture", file);
-
-        try {
-            const response = await fetch(`${API_BASE_URL}/upload-profile-picture`, {
-                method: "POST",
-                body: formData,
-                credentials: "include",
-                headers: {
-                    "Authorization": `Bearer ${localStorage.getItem("token")}`
-                }
-            });
-
-            if (!response.ok) throw new Error("Failed to upload profile picture");
-            
-            const data = await response.json();
-            if (elements.profilePicture) {
-                elements.profilePicture.src = data.profilePicture;
-            }
-            showAlert("Profile picture updated successfully!", "success");
-            
-            // Update the user profile in state
-            if (state.userProfile) {
-                state.userProfile.profilePicture = data.profilePicture;
-            }
-        } catch (error) {
-            console.error("Upload Error:", error);
-            showAlert("Failed to upload profile picture.", "error");
-        }
-    }
-
     function renderBusCards() {
         elements.busGrid.innerHTML = "";
         
@@ -308,7 +176,7 @@ document.addEventListener("DOMContentLoaded", async function () {
                         <p><strong>Driver:</strong> ${bus.driver}</p>
                         <p><strong>License Plate:</strong> ${bus.plate}</p>
                         <p><strong>Capacity:</strong> ${bus.capacity} passengers</p>
-                        <p><strong>Current Route:</strong> Downtown Express</p>
+                        <p><strong>Current Route:</strong> Machakos Express</p>
                         <p><strong>Last Update:</strong> ${new Date().toLocaleTimeString()}</p>
                     </div>
                     ` : ''}

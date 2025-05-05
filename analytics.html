@@ -3,9 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="description" content="ocuppEYE Analytics - Reports, Trends, and KPIs.">
-    <title>ocuppEYE Analytics</title>
-    <link rel="stylesheet" href="style.css">
+    <meta name="description" content="ocuppEYE Analytics - Overload Reports and Penalty Analysis">
+    <title>ocuppEYE - Overload Analytics</title>
+    <link rel="stylesheet" href="anl.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
     <link rel="icon" type="image/x-icon" href="favicon.ico">
 </head>
@@ -17,11 +17,11 @@
             </div>
             <div class="sidebar-menu">
                 <a href="index.html"><button><i class="fas fa-tv"></i> Monitoring</button></a>
-                <button class="active"><i class="fas fa-chart-bar"></i> Reports & Analytics</button>
+                <button class="active"><i class="fas fa-chart-bar"></i> Overload Analytics</button>
                 <div class="settings-dropdown">
                     <button id="settings-btn"><i class="fas fa-cog"></i> Settings</button>
                     <div class="dropdown-content">
-                        <button id="admin-account-btn"><i class="fas fa-user"></i> Account Details</button>
+                        <button id="admin-account-btn"><i class="fas fa-user"></i> Account</button>
                         <button id="admin-logout-btn"><i class="fas fa-sign-out-alt"></i> Logout</button>
                     </div>
                 </div>
@@ -29,46 +29,99 @@
         </div>
 
         <main class="analytics-dashboard">
-            <section class="reports-section">
-                <h3>Reports & Analytics</h3>
-                <div class="charts">
-                    <div class="chart">
-                        <canvas id="passengerTrends"></canvas>
-                    </div>
-                    <div class="chart">
-                        <canvas id="busCapacity"></canvas>
+            <header class="analytics-header">
+                <h1><i class="fas fa-exclamation-triangle"></i> Overload Incident Analysis</h1>
+                <div class="time-filter">
+                    <select id="time-period">
+                        <option value="7">Last 7 Days</option>
+                        <option value="30" selected>Last 30 Days</option>
+                        <option value="90">Last 90 Days</option>
+                        <option value="365">Last Year</option>
+                    </select>
+                </div>
+            </header>
+
+            <div class="overview-cards">
+                <div class="overview-card critical">
+                    <div class="card-content">
+                        <div class="card-icon">
+                            <i class="fas fa-bus-alt"></i>
+                        </div>
+                        <div class="card-details">
+                            <h3>Total Overload Incidents</h3>
+                            <div class="card-value" id="total-incidents">24</div>
+                            <div class="card-change up">↑ 18% from last period</div>
+                        </div>
                     </div>
                 </div>
-            </section>
 
-            <div class="kpi-grid">
-                <div class="kpi-card accent-blue">
-                    <div class="kpi-header">
-                        <i class="fas fa-users"></i>
-                        <h4>Total Passengers</h4>
+                <div class="overview-card warning">
+                    <div class="card-content">
+                        <div class="card-icon">
+                            <i class="fas fa-users-slash"></i>
+                        </div>
+                        <div class="card-details">
+                            <h3>Average Excess Passengers</h3>
+                            <div class="card-value" id="avg-excess">7.3</div>
+                            <div class="card-change down">↓ 1.2 from last period</div>
+                        </div>
                     </div>
-                    <div class="kpi-value">4,728</div>
-                    <div class="kpi-change up">↑ 12% from last week</div>
                 </div>
 
-                <div class="kpi-card accent-red">
-                    <div class="kpi-header">
-                        <i class="fas fa-exclamation-triangle"></i>
-                        <h4>Overload Events</h4>
+                <div class="overview-card penalty">
+                    <div class="card-content">
+                        <div class="card-icon">
+                            <i class="fas fa-money-bill-wave"></i>
+                        </div>
+                        <div class="card-details">
+                            <h3>Estimated Penalties</h3>
+                            <div class="card-value" id="total-penalties">Ksh3,850</div>
+                            <div class="card-change up">↑ ksh620 from last period</div>
+                        </div>
                     </div>
-                    <div class="kpi-value">17</div>
-                    <div class="kpi-change up">↑ 3 from last week</div>
                 </div>
             </div>
 
-            <div class="heatmap-container">
-                <h4>Overload Incidents by Time/Day</h4>
-                <div class="heatmap">
-                    <div class="heatmap-row">
-                        <div class="heatmap-label">Monday</div>
-                        <div class="heatmap-cell" data-incidents="0">0</div>
-                        <div class="heatmap-cell" data-incidents="1">1</div>
-                        <div class="heatmap-cell highlight" data-incidents="3">3</div>
+            <div class="analytics-grid">
+                <div class="chart-container">
+                    <div class="chart-header">
+                        <h3>Overload Incidents by Day</h3>
+                        <div class="chart-legend">
+                            <span><i class="fas fa-square" style="color: #ff6b6b"></i> Incidents</span>
+                            <span><i class="fas fa-square" style="color: #4ecdc4"></i> Excess Passengers</span>
+                        </div>
+                    </div>
+                    <canvas id="dailyTrendsChart"></canvas>
+                </div>
+
+                <div class="chart-container">
+                    <div class="chart-header">
+                        <h3>Top Offending Buses</h3>
+                    </div>
+                    <canvas id="busViolationsChart"></canvas>
+                </div>
+
+                <div class="incident-list">
+                    <div class="list-header">
+                        <h3>Recent Overload Incidents</h3>
+                        <button id="export-btn"><i class="fas fa-download"></i> Export</button>
+                    </div>
+                    <div class="list-container">
+                        <table id="incidents-table">
+                            <thead>
+                                <tr>
+                                    <th>Date/Time</th>
+                                    <th>Bus ID</th>
+                                    <th>Capacity</th>
+                                    <th>Detected</th>
+                                    <th>Excess</th>
+                                    <th>Penalty</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <!-- Data will be populated by JavaScript -->
+                            </tbody>
+                        </table>
                     </div>
                 </div>
             </div>
@@ -76,6 +129,7 @@
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.0.0"></script>
     <script src="analytics.js"></script>
 </body>
 </html>

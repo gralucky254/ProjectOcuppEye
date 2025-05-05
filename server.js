@@ -6,34 +6,60 @@ const jwt = require('jsonwebtoken');
 const cors = require('cors');
 const { body, validationResult } = require('express-validator');
 const cookieParser = require('cookie-parser');
-const multer = require('multer');
-const path = require('path');
-const helmet = require('helmet');
-const rateLimit = require('express-rate-limit');
 const passport = require('passport');
 const GoogleStrategy = require('passport-google-oauth20').Strategy;
 const session = require('express-session');
+const helmet = require('helmet');
+const rateLimit = require('express-rate-limit');
+const multer = require('multer');
+const path = require('path');
 const cloudinary = require('cloudinary').v2;
 
 // Initialize Express app
 const app = express();
 
-// Enhanced Security Middleware
 app.use(helmet({
   contentSecurityPolicy: {
     directives: {
       defaultSrc: ["'self'"],
-      scriptSrc: ["'self'", "'unsafe-inline'", "cdnjs.cloudflare.com"],
-      styleSrc: ["'self'", "'unsafe-inline'", "cdnjs.cloudflare.com"],
-      imgSrc: ["'self'", "data:", "res.cloudinary.com", "via.placeholder.com"],
-      connectSrc: ["'self'", "http://localhost:5000"]  // ✅ Allow API calls to Flask
+      scriptSrc: [
+        "'self'",
+        "'unsafe-inline'",
+        "cdnjs.cloudflare.com",
+        "unpkg.com"
+      ],
+      styleSrc: [
+        "'self'",
+        "'unsafe-inline'",
+        "cdnjs.cloudflare.com",
+        "fonts.googleapis.com"
+      ],
+      imgSrc: [
+        "'self'",
+        "data:",
+        "res.cloudinary.com",
+        "*.tile.openstreetmap.org"  // For Leaflet map tiles
+      ],
+      fontSrc: [
+        "'self'",
+        "cdnjs.cloudflare.com",
+        "fonts.gstatic.com",
+        "fonts.googleapis.com"
+      ],
+      connectSrc: [
+        "'self'",
+        "http://localhost:5000",
+        "ws://localhost:5000",
+        "http://10.0.0.51:5000",
+        "ws://10.0.0.51:5000"
+      ],
+      objectSrc: ["'none'"],
+      childSrc: ["'none'"],
+      frameSrc: ["'none'"]
     }
-  },
-  crossOriginResourcePolicy: { policy: "cross-origin" }
+  }
 }));
 
-
-// CORS Configuration
 app.use(cors({
   origin: process.env.FRONTEND_URL || "http://localhost:3000",
   credentials: true,
@@ -47,65 +73,43 @@ app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Rate Limiter
-const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 100,
-  message: { error: "Too many requests, please try again later." }
-});
-app.use('/auth/', limiter);
-
-// Session Configuration
-app.use(session({
-  secret: process.env.SESSION_SECRET || "your_session_secret",
-  resave: false,
-  saveUninitialized: true,
-  cookie: {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "Lax",
-    maxAge: 24 * 60 * 60 * 1000 // 24 hours
-  }
-}));
-
-// Passport Initialization
-app.use(passport.initialize());
-app.use(passport.session());
-
 // Database Connection
-const connectDB = async () => {
-  try {
-    await mongoose.connect(process.env.MONGO_URI || "mongodb://127.0.0.1:27017/occuppeye", {
-      useNewUrlParser: true,
-      useUnifiedTopology: true
-    });
-    console.log("✅ MongoDB Connected");
-  } catch (err) {
-    console.error("❌ MongoDB Connection Error:", err);
-    process.exit(1);
-  }
-};
-connectDB();
-
-// Cloudinary Configuration
-cloudinary.config({
-  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-  api_key: process.env.CLOUDINARY_API_KEY,
-  api_secret: process.env.CLOUDINARY_API_SECRET
+mongoose.connect(process.env.MONGO_URI || "mongodb://127.0.0.1:27017/occuppeye", {
+  useNewUrlParser: true,
+  useUnifiedTopology: true
+})
+.then(() => console.log("✅ MongoDB Connected"))
+.catch(err => {
+  console.error("❌ MongoDB Connection Error:", err);
+  process.exit(1);
 });
 
 // User Model
 const userSchema = new mongoose.Schema({
-  googleId: { type: String, unique: true, sparse: true },
+  fullName: { type: String, required: true },
   username: { type: String, unique: true, sparse: true },
-  password: String,
-  fullName: String,
-  phoneNumber: String,
-  email: { type: String, unique: true, required: true },
-  profilePicture: { type: String, default: '/default-profile.png' },
-  authMethod: { type: String, enum: ["local", "google"], default: "local" },
+  email: { type: String, required: true, unique: true },
+  phoneNumber: { type: String },
+  avatar: { type: String },
+  password: { type: String, select: false },
+  role: { type: String, enum: ['user', 'admin'], default: 'user' },
   createdAt: { type: Date, default: Date.now }
+}, { timestamps: true });
+
+userSchema.pre('save', async function(next) {
+  if (!this.isModified('password')) return next();
+  try {
+    const salt = await bcrypt.genSalt(10);
+    this.password = await bcrypt.hash(this.password, salt);
+    next();
+  } catch (err) {
+    next(err);
+  }
 });
+
+userSchema.methods.comparePassword = async function(candidatePassword) {
+  return await bcrypt.compare(candidatePassword, this.password);
+};
 
 const User = mongoose.model('User', userSchema);
 
@@ -116,19 +120,21 @@ const tokenExpiry = process.env.TOKEN_EXPIRY || "1h";
 // Authentication Middleware
 const authenticateUser = (req, res, next) => {
   const token = req.cookies.token || req.headers.authorization?.split(' ')[1];
-  if (!token) return res.status(401).json({ message: "Unauthorized" });
-
+  if (!token) {
+    return res.status(401).json({ success: false, message: "Authentication required" });
+  }
   try {
-    req.user = jwt.verify(token, jwtSecret);
+    const decoded = jwt.verify(token, jwtSecret);
+    req.user = decoded;
     next();
   } catch (error) {
-    res.status(401).json({ message: "Invalid token" });
+    res.status(401).json({ success: false, message: "Invalid or expired token" });
   }
 };
 
-// File Upload Configuration
+// File Upload Configuration for profile photos
 const storage = multer.memoryStorage();
-const upload = multer({ 
+const upload = multer({
   storage,
   limits: { fileSize: 5 * 1024 * 1024 }, // 5MB limit
   fileFilter: (req, file, cb) => {
@@ -140,184 +146,217 @@ const upload = multer({
   }
 });
 
-// Google OAuth Strategy
+// Cloudinary Configuration
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET
+});
+
+// Passport Google OAuth Strategy
 passport.use(new GoogleStrategy({
   clientID: process.env.GOOGLE_CLIENT_ID,
   clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-  callbackURL: process.env.GOOGLE_REDIRECT_URI
-}, async (accessToken, refreshToken, profile, done) => {
+  callbackURL: process.env.GOOGLE_CALLBACK_URL || 'http://localhost:3000/auth/google/callback'
+},
+async (accessToken, refreshToken, profile, done) => {
   try {
-    let user = await User.findOne({ $or: [{ googleId: profile.id }, { email: profile.emails[0].value }] });
-    
+    let user = await User.findOne({ googleId: profile.id });
     if (!user) {
       user = new User({
         googleId: profile.id,
-        email: profile.emails[0].value,
         fullName: profile.displayName,
-        profilePicture: profile.photos[0]?.value,
-        authMethod: "google"
+        email: profile.emails[0].value,
+        authMethod: 'google'
       });
       await user.save();
-    } else if (!user.googleId) {
-      user.googleId = profile.id;
-      user.authMethod = "google";
-      await user.save();
     }
-    
-    done(null, user);
+    return done(null, user);
   } catch (error) {
-    done(error, null);
+    return done(error);
   }
 }));
 
-passport.serializeUser((user, done) => done(null, user.id));
+passport.serializeUser((user, done) => {
+  done(null, user.id);
+});
+
 passport.deserializeUser(async (id, done) => {
   try {
     const user = await User.findById(id);
     done(null, user);
   } catch (error) {
-    done(error, null);
+    done(error);
   }
 });
+
+// Initialize Passport and Session
+app.use(session({
+  secret: process.env.SESSION_SECRET || 'default_secret_key',
+  resave: false,
+  saveUninitialized: false
+}));
+app.use(passport.initialize());
+app.use(passport.session());
 
 // Routes
-app.get('/auth/google', passport.authenticate('google', { scope: ['profile', 'email'] }));
 
-app.get('/auth/google/callback', 
-  passport.authenticate('google', { failureRedirect: '/login' }),
-  async (req, res) => {
-    const token = jwt.sign({ id: req.user._id, email: req.user.email }, jwtSecret, { expiresIn: tokenExpiry });
-    res.cookie('token', token, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'Lax',
-      maxAge: 24 * 60 * 60 * 1000 // 24 hours
-    });
-    res.redirect(process.env.FRONTEND_URL || 'http://localhost:3000/profile');
-  }
-);
+// Google authentication route
+app.get('/auth/google', passport.authenticate('google', {
+  scope: ['profile', 'email']
+}));
 
-app.post('/register', [
-  body('username').trim().notEmpty().withMessage('Username is required'),
-  body('password').isLength({ min: 6 }).withMessage('Password must be at least 6 characters'),
-  body('email').isEmail().normalizeEmail().withMessage('Valid email required'),
-  body('fullName').trim().notEmpty().withMessage('Full name is required'),
-  body('phoneNumber').trim().notEmpty().withMessage('Phone number is required')
+// Google callback route
+app.get('/auth/google/callback', passport.authenticate('google', {
+  failureRedirect: '/',
+  session: false
+}), (req, res) => {
+  // Generate JWT for the authenticated user
+  const token = jwt.sign(
+    { id: req.user._id, email: req.user.email },
+    jwtSecret,
+    { expiresIn: tokenExpiry }
+  );
+
+  // Send the token back to the frontend (in a cookie or response)
+  res.cookie('token', token, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'Lax',
+    maxAge: 24 * 60 * 60 * 1000
+  });
+
+  res.redirect(process.env.FRONTEND_URL || 'http://localhost:3000'); // Redirect to the frontend
+});
+
+// Login Route (returns only name and phone number)
+app.post('/login', [
+  body('username').trim().notEmpty(),
+  body('password').notEmpty()
 ], async (req, res) => {
   const errors = validationResult(req);
-  if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
-
-  try {
-    const { username, password, email, fullName, phoneNumber } = req.body;
-    
-    if (await User.findOne({ email })) {
-      return res.status(400).json({ message: 'Email already registered' });
-    }
-    
-    const hashedPassword = await bcrypt.hash(password, 12);
-    const user = new User({ username, password: hashedPassword, email, fullName, phoneNumber });
-    await user.save();
-    
-    res.status(201).json({ message: 'Registration successful' });
-  } catch (error) {
-    res.status(500).json({ message: 'Registration failed', error: error.message });
+  if (!errors.isEmpty()) {
+    return res.status(400).json({ success: false, errors: errors.array() });
   }
-});
 
-app.post('/login', async (req, res) => {
   try {
-    const { email, password } = req.body;
-    const user = await User.findOne({ email });
-    
-    if (!user || !(await bcrypt.compare(password, user.password))) {
-      return res.status(401).json({ message: 'Invalid credentials' });
+    const { username, password } = req.body;
+    const user = await User.findOne({
+      $or: [{ username }, { email: username }]
+    }).select('+password');
+
+    if (!user || !(await user.comparePassword(password))) {
+      return res.status(401).json({ success: false, message: 'Invalid credentials' });
     }
-    
-    const token = jwt.sign({ id: user._id, email: user.email }, jwtSecret, { expiresIn: tokenExpiry });
+
+    const token = jwt.sign(
+      { id: user._id, email: user.email },
+      jwtSecret,
+      { expiresIn: tokenExpiry }
+    );
+
     res.cookie('token', token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'Lax',
-      maxAge: 24 * 60 * 60 * 1000 // 24 hours
+      maxAge: 24 * 60 * 60 * 1000
     });
-    
-    res.json({ 
-      message: 'Login successful',
+
+    res.json({
+      success: true,
+      token,
       user: {
         id: user._id,
-        email: user.email,
         fullName: user.fullName,
-        profilePicture: user.profilePicture
+        phoneNumber: user.phoneNumber
       }
     });
+
   } catch (error) {
-    res.status(500).json({ message: 'Login failed', error: error.message });
+    console.error('Login error:', error);
+    res.status(500).json({ success: false, message: 'Login failed', error: process.env.NODE_ENV === 'development' ? error.message : undefined });
   }
 });
 
-app.get('/logout', (req, res) => {
-  res.clearCookie('token');
-  res.json({ message: 'Logged out successfully' });
-});
+// Profile Route (returns only name and phone number)
+// In your Express server file (app.js or server.js)
 
-app.get('/profile', authenticateUser, async (req, res) => {
+// Get current user profile
+app.get('/api/profile', authenticateUser, async (req, res) => {
   try {
     const user = await User.findById(req.user.id).select('-password');
-    if (!user) return res.status(404).json({ message: 'User not found' });
-    
-    res.json({
-      ...user.toObject(),
-      memberSince: user.createdAt.toISOString().split('T')[0]
-    });
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+    res.json({ success: true, user });
   } catch (error) {
-    res.status(500).json({ message: 'Failed to fetch profile', error: error.message });
+    res.status(500).json({ success: false, message: 'Server error' });
   }
 });
 
-app.post('/upload-profile-picture', authenticateUser, upload.single('profilePicture'), async (req, res) => {
+// Update user profile
+app.put('/api/profile', authenticateUser, [
+  body('fullName').trim().notEmpty(),
+  body('phoneNumber').optional().trim(),
+  body('email').isEmail().normalizeEmail()
+], async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(400).json({ success: false, errors: errors.array() });
+  }
+
   try {
-    if (!req.file) return res.status(400).json({ message: 'No image uploaded' });
+    const { fullName, phoneNumber, email } = req.body;
     
-    const b64 = Buffer.from(req.file.buffer).toString('base64');
-    const dataURI = `data:${req.file.mimetype};base64,${b64}`;
-    
-    const result = await cloudinary.uploader.upload(dataURI, {
-      folder: 'profile-pictures',
-      transformation: { width: 500, height: 500, crop: 'fill' }
-    });
-    
-    const user = await User.findByIdAndUpdate(
+    // Check if email is already taken by another user
+    const emailExists = await User.findOne({ email, _id: { $ne: req.user.id } });
+    if (emailExists) {
+      return res.status(400).json({ success: false, message: 'Email already in use' });
+    }
+
+    const updatedUser = await User.findByIdAndUpdate(
       req.user.id,
-      { profilePicture: result.secure_url },
-      { new: true }
+      { fullName, phoneNumber, email },
+      { new: true, runValidators: true }
     ).select('-password');
-    
-    res.json({ 
-      message: 'Profile picture updated',
-      profilePicture: user.profilePicture 
-    });
+
+    res.json({ success: true, user: updatedUser });
   } catch (error) {
-    res.status(500).json({ message: 'Upload failed', error: error.message });
+    res.status(500).json({ success: false, message: 'Update failed' });
   }
 });
 
-// Default Profile Image Route
-app.get('/default-profile.png', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public/images/default-profile.png'));
-});
+// Update profile picture
+app.post('/api/profile/avatar', authenticateUser, upload.single('avatar'), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ success: false, message: 'No file uploaded' });
+    }
 
-// Error Handling Middleware
-app.use((err, req, res, next) => {
-  console.error(err.stack);
-  res.status(500).json({ 
-    message: 'Something went wrong!',
-    error: process.env.NODE_ENV === 'development' ? err.message : undefined
-  });
+    // Upload to Cloudinary or save locally
+    const result = await cloudinary.uploader.upload(req.file.path, {
+      folder: 'profile-avatars',
+      width: 200,
+      height: 200,
+      crop: 'fill'
+    });
+
+    // Update user in database
+    await User.findByIdAndUpdate(req.user.id, { avatar: result.secure_url });
+
+    res.json({ success: true, avatarUrl: result.secure_url });
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'Avatar upload failed' });
+  }
+});
+// Logout Route
+app.get('/logout', (req, res) => {
+  res.clearCookie('token');
+  res.json({ success: true, message: 'Logged out successfully' });
 });
 
 // Start Server
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`🚀 Server running on http://localhost:${PORT}`);
-  console.log(`🔗 Frontend: ${process.env.FRONTEND_URL || 'http://localhost:3000'}`);
 });
